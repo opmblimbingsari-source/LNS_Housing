@@ -383,6 +383,19 @@ if Bridge.Framework == 'qbx' then
         local src = source
         if src then OnPlayerUnloaded(src) end
     end)
+elseif Bridge.Framework == 'qbcore' then
+    AddEventHandler('QBCore:Server:PlayerLoaded', function(player)
+        local src = player and (player.PlayerData and player.PlayerData.source or player.source) or source
+        if src then OnPlayerLoaded(src) end
+    end)
+    AddEventHandler('QBCore:Server:OnPlayerUnload', function(src)
+        src = src or source
+        if src then OnPlayerUnloaded(src) end
+    end)
+    AddEventHandler('playerDropped', function()
+        local src = source
+        if src then OnPlayerUnloaded(src) end
+    end)
 elseif Bridge.Framework == 'esx' then
     RegisterNetEvent('esx:playerLoaded', function(playerId, xPlayer)
         OnPlayerLoaded(playerId)
@@ -1531,7 +1544,7 @@ local function FormatApartmentForMDT(aptData, roomData)
             ownerName = Bridge.Server.GetPlayerName(onlinePlayer.PlayerData.source)
         else
             pcall(function()
-                if Bridge.Framework == 'qbx' then
+                if Bridge.Framework == 'qbx' or Bridge.Framework == 'qbcore' then
                     local pRow = MySQL.single.await('SELECT charinfo FROM players WHERE citizenid = ? LIMIT 1', {citizenid})
                     if pRow and pRow.charinfo then
                         local charinfo = json.decode(pRow.charinfo)
