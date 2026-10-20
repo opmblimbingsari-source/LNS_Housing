@@ -1,4 +1,3 @@
-lib.require('@qbx_core.modules.lib')
 local Settings = lib.load('shared.settings')
 local Furniture = lib.load('shared.furniture')
 local CurrentProperty = nil
@@ -1578,7 +1577,7 @@ function InitializeHousing()
         FreezeEntityPosition(PlayerPedId(), false)
         DoScreenFadeIn(1000)
     else
-        local playerData = Bridge.Framework == 'qbx' and exports.qbx_core:GetPlayerData() or nil
+        local playerData = Bridge.Client.GetPlayerData()
         local lnsProperty = playerData and playerData.metadata and playerData.metadata.lnsProperty
         if lnsProperty and lnsProperty.id and Properties then
             local propId = tonumber(lnsProperty.id)
