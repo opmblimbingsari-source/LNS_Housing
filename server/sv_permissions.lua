@@ -91,15 +91,10 @@ end
 function CheckPermission(source, permType, targetId, actionType, ignoreTemp)
     debugPrint('info', 'CheckPermission called', {source = source, permType = permType, targetId = targetId, actionType = actionType, ignoreTemp = ignoreTemp})
     if permType == 'admin' then
-        if Bridge.Framework == 'esx' then
-            local ESX = exports['es_extended']:getSharedObject()
-            local player = ESX.GetPlayerFromId(source)
-            if player then
-                local group = player.getGroup()
-                return group == 'admin' or group == 'god' or group == 'superadmin'
+        for _, group in ipairs({'admin', 'god', 'superadmin'}) do
+            if Bridge.Server.HasGroupPermission(source, group) then
+                return true
             end
-        else
-            return IsPlayerAceAllowed(source, 'admin')
         end
         return false
     elseif permType == 'realestate' then
@@ -109,24 +104,10 @@ function CheckPermission(source, permType, targetId, actionType, ignoreTemp)
         local isAdmin = false
 
         local allowedGroups = Settings.RealEstate.Groups
-        if Bridge.Framework == 'qbx' then
-            for _, group in ipairs(allowedGroups) do
-                if IsPlayerAceAllowed(tostring(source), 'group.' .. group) or IsPlayerAceAllowed(tostring(source), group) then
-                    isAdmin = true
-                    break
-                end
-            end
-        elseif Bridge.Framework == 'esx' then
-            local ESX = exports['es_extended']:getSharedObject()
-            local p = ESX.GetPlayerFromId(source)
-            local playerGroup = p and p.getGroup()
-            if playerGroup then
-                for _, group in ipairs(allowedGroups) do
-                    if playerGroup == group then
-                        isAdmin = true
-                        break
-                    end
-                end
+        for _, group in ipairs(allowedGroups) do
+            if Bridge.Server.HasGroupPermission(source, group) then
+                isAdmin = true
+                break
             end
         end
 
