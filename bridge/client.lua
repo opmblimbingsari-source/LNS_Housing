@@ -2,6 +2,7 @@ Bridge.Client = {}
 
 local Settings = lib.load('shared.settings')
 local ESX = Bridge.Framework == 'esx' and exports['es_extended']:getSharedObject() or nil
+local QBCore = Bridge.Framework == 'qbcore' and exports['qb-core']:GetCoreObject() or nil
 local clientGarageZones = {}
 local cachedIdentifier = nil
 local cachedPlayerName = nil
@@ -51,19 +52,55 @@ elseif Bridge.Framework == 'esx' then
             cachedJob = nil
         end
     end)
+elseif Bridge.Framework == 'qbcore' then
+    RegisterNetEvent('QBCore:Client:OnPlayerLoaded', function()
+        cachedIdentifier = nil
+        cachedPlayerName = nil
+        cachedJob = nil
+    end)
+
+    RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
+        cachedIdentifier = nil
+        cachedPlayerName = nil
+        cachedJob = nil
+    end)
+
+    RegisterNetEvent('QBCore:Client:OnJobUpdate', function(job)
+        if job then
+            cachedJob = {
+                name = job.name,
+                label = job.label,
+                grade = job.grade and job.grade.level or job.grade,
+                grade_name = job.grade and job.grade.name or job.grade_name
+            }
+        else
+            cachedJob = nil
+        end
+    end)
 end
 
 -- Player Data Getters
+function Bridge.Client.GetPlayerData()
+    if Bridge.Framework == 'qbx' then
+        return exports.qbx_core:GetPlayerData()
+    elseif Bridge.Framework == 'qbcore' then
+        return QBCore.Functions.GetPlayerData()
+    elseif Bridge.Framework == 'esx' then
+        return ESX.GetPlayerData()
+    end
+    return nil
+end
+
 function Bridge.Client.GetIdentifier()
     if cachedIdentifier then return cachedIdentifier end
-    if Bridge.Framework == 'qbx' then
-        local data = exports.qbx_core:GetPlayerData()
+    if Bridge.Framework == 'qbx' or Bridge.Framework == 'qbcore' then
+        local data = Bridge.Client.GetPlayerData()
         if data and data.citizenid then
             cachedIdentifier = data.citizenid
             return cachedIdentifier
         end
     elseif Bridge.Framework == 'esx' then
-        local data = ESX.GetPlayerData()
+        local data = Bridge.Client.GetPlayerData()
         if data and data.identifier then
             cachedIdentifier = data.identifier
             return cachedIdentifier
@@ -74,15 +111,15 @@ end
 
 function Bridge.Client.GetPlayerName()
     if cachedPlayerName then return cachedPlayerName end
-    if Bridge.Framework == 'qbx' then
-        local data = exports.qbx_core:GetPlayerData()
+    if Bridge.Framework == 'qbx' or Bridge.Framework == 'qbcore' then
+        local data = Bridge.Client.GetPlayerData()
         if data and data.charinfo then
             cachedPlayerName = data.charinfo.firstname .. ' ' .. data.charinfo.lastname
             return cachedPlayerName
         end
         return 'Unknown'
     elseif Bridge.Framework == 'esx' then
-        local data = ESX.GetPlayerData()
+        local data = Bridge.Client.GetPlayerData()
         if data then
             if data.firstName and data.lastName then
                 cachedPlayerName = data.firstName .. ' ' .. data.lastName
@@ -99,8 +136,8 @@ end
 
 function Bridge.Client.GetPlayerJob()
     if cachedJob then return cachedJob end
-    if Bridge.Framework == 'qbx' then
-        local data = exports.qbx_core:GetPlayerData()
+    if Bridge.Framework == 'qbx' or Bridge.Framework == 'qbcore' then
+        local data = Bridge.Client.GetPlayerData()
         if data and data.job then
             cachedJob = {
                 name = data.job.name,
@@ -111,7 +148,7 @@ function Bridge.Client.GetPlayerJob()
             return cachedJob
         end
     elseif Bridge.Framework == 'esx' then
-        local data = ESX.GetPlayerData()
+        local data = Bridge.Client.GetPlayerData()
         if data and data.job then
             cachedJob = {
                 name = data.job.name,
@@ -347,37 +384,29 @@ end
 
 function Bridge.Client.LoadAudioBank(bankName, timeoutMs)
     debugPrint('info', 'Bridge.Client.LoadAudioBank', {bankName = bankName, framework = Bridge.Framework})
-    if Bridge.Framework == 'qbx' then
-        return qbx.loadAudioBank(bankName, timeoutMs)
-    else
-        local loaded = RequestScriptAudioBank(bankName, false, -1)
-        if loaded then return true end
-        local deadline = GetGameTimer() + (timeoutMs or 5000)
-        while not loaded and GetGameTimer() < deadline do
-            Wait(100)
-            loaded = RequestScriptAudioBank(bankName, false, -1)
-        end
-        return loaded
+    local loaded = RequestScriptAudioBank(bankName, false, -1)
+    if loaded then return true end
+    local deadline = GetGameTimer() + (timeoutMs or 5000)
+    while not loaded and GetGameTimer() < deadline do
+        Wait(100)
+        loaded = RequestScriptAudioBank(bankName, false, -1)
     end
+    return loaded
 end
 
 function Bridge.Client.PlayAudio(opts)
     debugPrint('info', 'Bridge.Client.PlayAudio', {audioName = opts.audioName, framework = Bridge.Framework})
-    if Bridge.Framework == 'qbx' then
-        return qbx.playAudio(opts)
+    local src = opts.audioSource
+    local soundId = GetSoundId()
+    PlaySoundFromCoord(soundId, opts.audioName, src.x, src.y, src.z, opts.audioRef, false, opts.range or 10.0, false)
+    if opts.returnSoundId then
+        return soundId
     else
-        local src = opts.audioSource
-        local soundId = GetSoundId()
-        PlaySoundFromCoord(soundId, opts.audioName, src.x, src.y, src.z, opts.audioRef, false, opts.range or 10.0, false)
-        if opts.returnSoundId then
-            return soundId
-        else
-            CreateThread(function()
-                Wait(10000)
-                StopSound(soundId)
-                ReleaseSoundId(soundId)
-            end)
-            return nil
-        end
+        CreateThread(function()
+            Wait(10000)
+            StopSound(soundId)
+            ReleaseSoundId(soundId)
+        end)
+        return nil
     end
 end
