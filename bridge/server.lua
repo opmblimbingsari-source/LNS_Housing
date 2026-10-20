@@ -3,6 +3,7 @@ Bridge.Server = {}
 local Settings = lib.load('shared.settings')
 local Furniture = lib.load('shared.furniture')
 local ESX = Bridge.Framework == 'esx' and exports['es_extended']:getSharedObject() or nil
+local QBCore = Bridge.Framework == 'qbcore' and exports['qb-core']:GetCoreObject() or nil
 
 local function normalizeAmount(amount)
     local parsed = tonumber(amount)
@@ -13,6 +14,7 @@ end
 
 local DB_CONFIG = {
     qbx = { table = 'players', column = 'money', key = 'citizenid' },
+    qbcore = { table = 'players', column = 'money', key = 'citizenid' },
     esx = { table = 'users', column = 'accounts', key = 'identifier' }
 }
 
@@ -23,6 +25,9 @@ function Bridge.Server.GetIdentifier(source)
     if Bridge.Framework == 'qbx' then
         local player = exports.qbx_core:GetPlayer(source)
         return player and player.PlayerData.citizenid
+    elseif Bridge.Framework == 'qbcore' then
+        local player = QBCore.Functions.GetPlayer(source)
+        return player and player.PlayerData.citizenid
     elseif Bridge.Framework == 'esx' then
         local player = ESX.GetPlayerFromId(source)
         return player and player.identifier
@@ -32,6 +37,12 @@ end
 function Bridge.Server.GetPlayerName(source)
     if Bridge.Framework == 'qbx' then
         local player = exports.qbx_core:GetPlayer(source)
+        if player and player.PlayerData.charinfo then
+            return player.PlayerData.charinfo.firstname .. ' ' .. player.PlayerData.charinfo.lastname
+        end
+        return 'Unknown'
+    elseif Bridge.Framework == 'qbcore' then
+        local player = QBCore.Functions.GetPlayer(source)
         if player and player.PlayerData.charinfo then
             return player.PlayerData.charinfo.firstname .. ' ' .. player.PlayerData.charinfo.lastname
         end
@@ -51,6 +62,17 @@ function Bridge.Server.GetPlayerJob(source)
                 label = player.PlayerData.job.label,
                 grade = player.PlayerData.job.grade.level,
                 grade_name = player.PlayerData.job.grade.name
+            }
+        end
+    elseif Bridge.Framework == 'qbcore' then
+        local player = QBCore.Functions.GetPlayer(source)
+        local job = player and player.PlayerData.job
+        if job then
+            return {
+                name = job.name,
+                label = job.label,
+                grade = job.grade and job.grade.level or 0,
+                grade_name = job.grade and job.grade.name or ''
             }
         end
     elseif Bridge.Framework == 'esx' then
@@ -74,6 +96,11 @@ function Bridge.Server.GetJobLabel(jobName)
         if ok and jobs and jobs[jobName] and jobs[jobName].label then
             return jobs[jobName].label
         end
+    elseif Bridge.Framework == 'qbcore' then
+        local jobs = QBCore.Shared.Jobs
+        if jobs and jobs[jobName] and jobs[jobName].label then
+            return jobs[jobName].label
+        end
     elseif Bridge.Framework == 'esx' then
         if ESX and ESX.GetJobs then
             local ok, jobs = pcall(function() return ESX.GetJobs() end)
@@ -88,6 +115,8 @@ end
 function Bridge.Server.IsPlayerOnline(identifier)
     if Bridge.Framework == 'qbx' then
         return exports.qbx_core:GetPlayerByCitizenId(identifier)
+    elseif Bridge.Framework == 'qbcore' then
+        return QBCore.Functions.GetPlayerByCitizenId(identifier)
     elseif Bridge.Framework == 'esx' then
         local xPlayer = ESX.GetPlayerFromIdentifier(identifier)
         if not xPlayer then return nil end
@@ -104,6 +133,10 @@ function Bridge.Server.CreateUseableItem(name, callback)
         exports.qbx_core:CreateUseableItem(name, function(source, item)
             callback(source)
         end)
+    elseif Bridge.Framework == 'qbcore' then
+        QBCore.Functions.CreateUseableItem(name, function(source, item)
+            callback(source)
+        end)
     elseif Bridge.Framework == 'esx' then
         ESX.RegisterUsableItem(name, function(source)
             callback(source)
@@ -114,9 +147,26 @@ end
 function Bridge.Server.Logout(source)
     if Bridge.Framework == 'qbx' then
         exports.qbx_core:Logout(source)
+    elseif Bridge.Framework == 'qbcore' then
+        QBCore.Player.Logout(source)
     elseif Bridge.Framework == 'esx' then
         TriggerEvent('esx:playerLogout', source)
     end
+end
+
+function Bridge.Server.HasGroupPermission(source, group)
+    if Bridge.Framework == 'qbcore' then
+        return QBCore.Functions.HasPermission(source, group)
+            or IsPlayerAceAllowed(tostring(source), 'group.' .. group)
+            or IsPlayerAceAllowed(tostring(source), group)
+    elseif Bridge.Framework == 'qbx' then
+        return IsPlayerAceAllowed(tostring(source), 'group.' .. group)
+            or IsPlayerAceAllowed(tostring(source), group)
+    elseif Bridge.Framework == 'esx' then
+        local player = ESX.GetPlayerFromId(source)
+        return player and player.getGroup() == group or false
+    end
+    return false
 end
 
 -- Unified Online Player Money Management
@@ -124,6 +174,9 @@ function Bridge.Server.GetMoney(source, moneyType)
     moneyType = moneyType or 'bank'
     if Bridge.Framework == 'qbx' then
         return exports.qbx_core:GetMoney(source, moneyType) or 0
+    elseif Bridge.Framework == 'qbcore' then
+        local player = QBCore.Functions.GetPlayer(source)
+        return player and player.Functions.GetMoney(moneyType) or 0
     elseif Bridge.Framework == 'esx' then
         local player = ESX.GetPlayerFromId(source)
         if not player then return 0 end
@@ -154,6 +207,9 @@ function Bridge.Server.AddMoney(source, moneyType, amount, reason)
 
     if Bridge.Framework == 'qbx' then
         return exports.qbx_core:AddMoney(source, moneyType, safeAmount, reason or "Property System Payout")
+    elseif Bridge.Framework == 'qbcore' then
+        local player = QBCore.Functions.GetPlayer(source)
+        return player and player.Functions.AddMoney(moneyType, safeAmount, reason or "Property System Payout") or false
     elseif Bridge.Framework == 'esx' then
         local player = ESX.GetPlayerFromId(source)
         if player then
@@ -184,6 +240,9 @@ function Bridge.Server.RemoveMoney(source, moneyType, amount, reason)
 
     if Bridge.Framework == 'qbx' then
         return exports.qbx_core:RemoveMoney(source, moneyType, safeAmount, reason or "Property System")
+    elseif Bridge.Framework == 'qbcore' then
+        local player = QBCore.Functions.GetPlayer(source)
+        return player and player.Functions.RemoveMoney(moneyType, safeAmount, reason or "Property System") or false
     elseif Bridge.Framework == 'esx' then
         local player = ESX.GetPlayerFromId(source)
         if player then
@@ -541,6 +600,9 @@ function Bridge.Server.SetPlayerJob(identifier, jobName, grade)
         if Bridge.Framework == 'qbx' then
             exports.qbx_core:SetJob(src, jobName, grade)
             return true
+        elseif Bridge.Framework == 'qbcore' then
+            local player = QBCore.Functions.GetPlayer(src)
+            return player and player.Functions.SetJob(jobName, grade) or false
         elseif Bridge.Framework == 'esx' then
             local xPlayer = ESX.GetPlayerFromId(src)
             if xPlayer then
@@ -550,7 +612,7 @@ function Bridge.Server.SetPlayerJob(identifier, jobName, grade)
         end
     end
 
-    if Bridge.Framework == 'qbx' then
+    if Bridge.Framework == 'qbx' or Bridge.Framework == 'qbcore' then
         local result = MySQL.query.await('SELECT job FROM players WHERE citizenid = ?', {identifier})
         if result and result[1] then
             local jobData = json.decode(result[1].job or '{}')
@@ -633,8 +695,13 @@ function Bridge.Server.SetPlayerInside(source, propertyId)
     if not source or not propertyId then return end
     propertyId = tonumber(propertyId)
 
-    if Bridge.Framework == 'qbx' then
-        local player = exports.qbx_core:GetPlayer(source)
+    if Bridge.Framework == 'qbx' or Bridge.Framework == 'qbcore' then
+        local player
+        if Bridge.Framework == 'qbx' then
+            player = exports.qbx_core:GetPlayer(source)
+        else
+            player = QBCore.Functions.GetPlayer(source)
+        end
         if not player then return end
 
         player.PlayerData.metadata = player.PlayerData.metadata or {}
@@ -669,8 +736,13 @@ end
 function Bridge.Server.ClearPlayerInside(source)
     if not source then return end
 
-    if Bridge.Framework == 'qbx' then
-        local player = exports.qbx_core:GetPlayer(source)
+    if Bridge.Framework == 'qbx' or Bridge.Framework == 'qbcore' then
+        local player
+        if Bridge.Framework == 'qbx' then
+            player = exports.qbx_core:GetPlayer(source)
+        else
+            player = QBCore.Functions.GetPlayer(source)
+        end
         if not player then return end
 
         player.PlayerData.metadata = player.PlayerData.metadata or {}
